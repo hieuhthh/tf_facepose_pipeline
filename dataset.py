@@ -5,72 +5,49 @@ import numpy as np
 from sklearn.model_selection import KFold, StratifiedKFold
 import tensorflow as tf
 
+from utils import *
 from augment import *
 
-def get_data_from_phrase(route, phrase=None):
+def get_data_facepose(route):
+    X_path = sorted(glob(path_join(route, 'images') + '/*'))
+    Y_path = sorted(glob(path_join(route, 'marks') + '/*'))
+    return X_path, Y_path
+
+def auto_split_data(route, valid_ratio=0.1, test_ratio=None, seed=42):
     """
     input:
-        route to main directory and phrase ("train", "valid", "test")
-        or just route to the directory that its subfolder are classes
+        route to the directory that its is images and marks
     output:
-        X_path: path to img
-        Y_int: int label
-        all_class: list of string class name
+        X, Y
     """
-    X_path = []
-    Y_int = []
-    phrase_path = os.path.join(route, phrase) if phrase is not None else route
-    all_class = sorted(os.listdir(phrase_path))
-    for cl in all_class:
-        path2cl = os.path.join(phrase_path, cl)
-        temp =  glob(path2cl + '/*')
-        X_path = X_path + temp
-        Y_int = Y_int + len(temp) * [all_class.index(cl)]
-    return X_path, Y_int, all_class
-
-def auto_split_data(route, fold, valid_fold=None, test_fold=None, stratified=False, seed=42):
-    """
-    input:
-        route to the directory that its subfolder are classes
-        fold: how many folds
-    output:
-        X, Y, class corresponding
-    """
-    X_path, Y_int, all_class = get_data_from_phrase(route)
-
-    df = pd.DataFrame({'image':X_path, 'label':Y_int})
+    X_path, Y_path = get_data_facepose(route)
+    
+    df = pd.DataFrame({'image':X_path, 'label':Y_path})
     df = df.sample(frac=1.0, random_state=seed).reset_index(drop=True)
 
-    if stratified:
-        skf = StratifiedKFold(n_splits=fold, random_state=seed, shuffle=True)
-        for idx, (train_index, test_index) in enumerate(skf.split(df.image, df.label)):
-            df.loc[test_index, 'fold'] = idx
-    else:
-        kf = KFold(n_splits=fold, random_state=seed, shuffle=True)
-        for idx, (train_index, test_index) in enumerate(kf.split(df.image)):
-            df.loc[test_index, 'fold'] = idx
+    if valid_ratio is not None and test_ratio is not None:
+        n_test = int(len(X_path) * test_ratio)
+        n_valid = int(len(X_path) * valid_ratio)
 
-    if valid_fold is not None and test_fold is not None:
-        df_train = df[df['fold']!=valid_fold]
-        df_train = df_train[df_train['fold']!=test_fold]
+        df_test = df[:n_test]
+        df_valid = df[n_test:n_test+n_valid]
+        df_train = df[n_test+n_valid:]
 
-        df_valid = df[df['fold']==valid_fold]
-        df_test = df[df['fold']==test_fold]
-
-        X_train = df_train['image'].values
-        X_valid = df_valid['image'].values
         X_test = df_test['image'].values
+        X_valid = df_valid['image'].values
+        X_train = df_train['image'].values
 
-        Y_train = df_train['label'].values
-        Y_valid = df_valid['label'].values
         Y_test = df_test['label'].values
+        Y_valid = df_valid['label'].values
+        Y_train = df_train['label'].values
 
         return X_train, Y_train, all_class, X_valid, Y_valid, X_test, Y_test
 
-    elif valid_fold is not None:
-        df_train = df[df['fold']!=valid_fold]
+    elif valid_ratio is not None:
+        n_valid = int(len(X_path) * valid_ratio)
 
-        df_valid = df[df['fold']==valid_fold]
+        df_train = df[n_valid:]
+        df_valid = df[:n_valid]
 
         X_train = df_train['image'].values
         X_valid = df_valid['image'].values
@@ -78,7 +55,7 @@ def auto_split_data(route, fold, valid_fold=None, test_fold=None, stratified=Fal
         Y_train = df_train['label'].values
         Y_valid = df_valid['label'].values
 
-        return X_train, Y_train, all_class, X_valid, Y_valid
+        return X_train, Y_train, X_valid, Y_valid
 
     else:
         df_train = df
@@ -87,14 +64,15 @@ def auto_split_data(route, fold, valid_fold=None, test_fold=None, stratified=Fal
 
         Y_train = df_train['label'].values
 
-        return X_train, Y_train, all_class
+        return X_train, Y_train
 
 # Load the numpy files
 def load_npy(npy_path):
     feature = np.load(npy_path)
+    feature = tf.cast(feature, tf.float32)
     return feature
 
-def build_decoder(with_labels=True, label_mode='int', all_class=None, target_size=(256, 256), im_size_before_crop=None):
+def build_decoder(with_labels=True, target_size=(256, 256), im_size_before_crop=None):
     def decode_img_preprocess(img):
         if im_size_before_crop is None:
             img = tf.image.resize(img, target_size)
@@ -144,19 +122,19 @@ def build_dataset(paths, labels=None, bsize=32,
     dset = dset.cache(cache_dir) if cache else dset
     dset = dset.repeat() if repeat else dset
     dset = dset.shuffle(shuffle) if shuffle else dset
-    dset = dset.map(lambda x,y:(augment(x),
+    dset = dset.map(lambda x,y:(x,
                                 tf.numpy_function(load_npy, [y], tf.float32)
                                 ), num_parallel_calls=AUTO)
     dset = dset.map(decode_fn, num_parallel_calls=AUTO)
-    dset = dset.map(lambda x,y:(augment(x),y), num_parallel_calls=AUTO) if augment is not None else 
+    dset = dset.map(lambda x,y:(augment(x),y), num_parallel_calls=AUTO) if augment is not None else dset
     dset = dset.batch(bsize)
     dset = dset.prefetch(AUTO)
     
     return dset
 
-def build_dataset_from_X_Y(X_path, Y_int, all_class, with_labels, label_mode, img_size,
+def build_dataset_from_X_Y(X_path, Y_int, with_labels, img_size,
                            batch_size, repeat, shuffle, augment, im_size_before_crop=None):
-    decoder = build_decoder(with_labels=with_labels, label_mode=label_mode, all_class=all_class, 
+    decoder = build_decoder(with_labels=with_labels, 
                             target_size=img_size, im_size_before_crop=im_size_before_crop)
 
     augment_img = build_augment() if augment else None
@@ -167,32 +145,31 @@ def build_dataset_from_X_Y(X_path, Y_int, all_class, with_labels, label_mode, im
     return dataset
 
 if __name__ == '__main__':
+    import os
     from utils import *
     from multiprocess_dataset import *
+
+    os.environ["CUDA_VISIBLE_DEVICES"]=""
 
     settings = get_settings()
     globals().update(settings)
 
-    route_dataset = path_join(route, 'dataset')
+    # route_dataset = path_join(route, 'dataset')
+    route_dataset = '/home/lap14880/hieunmt/facepose/facepose_gendata/dataset'
 
     img_size = (im_size, im_size)
     input_shape = (im_size, im_size, 3)
 
-    use_cate_int = False
-    if label_mode == 'cate_int':
-        use_cate_int = True
+    X_train, Y_train, X_valid, Y_valid = auto_split_data(route_dataset, valid_ratio, test_ratio, seed)
 
-    X_train, Y_train, all_class, X_valid, Y_valid = auto_split_data_multiprocessing_faster(route_dataset, valid_ratio, test_ratio, seed)
-    
     train_n_images = len(Y_train)
-    train_dataset = build_dataset_from_X_Y(X_train, Y_train, all_class, train_with_labels, label_mode, img_size,
+    train_dataset = build_dataset_from_X_Y(X_train, Y_train, train_with_labels, img_size,
                                            BATCH_SIZE, train_repeat, train_shuffle, train_augment, im_size_before_crop)
 
     valid_n_images = len(Y_valid)
-    valid_dataset = build_dataset_from_X_Y(X_valid, Y_valid, all_class, valid_with_labels, label_mode, img_size,
+    valid_dataset = build_dataset_from_X_Y(X_valid, Y_valid, valid_with_labels, img_size,
                                            BATCH_SIZE, valid_repeat, valid_shuffle, valid_augment)
 
-    print(len(all_class))
     print(len(X_train))
     print(len(X_valid))
     print(X_train[0])
@@ -205,5 +182,10 @@ if __name__ == '__main__':
 
     import cv2
     import numpy as np
-    cv2.imwrite("sample.png", np.array(x[0][...,::-1])*255)
+    
+    img = np.array(x[0][...,::-1]) * 255
+    mark = np.int64(y[0] * im_size)
+    cv2.imwrite("sample.png", img)
+    draw_marks(img, mark)
+    cv2.imwrite(f"sample_mark.jpg", img)
 

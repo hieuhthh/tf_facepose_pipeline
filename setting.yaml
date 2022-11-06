@@ -4,7 +4,6 @@ CUDA_VISIBLE_DEVICES: 0,1
 
 im_size: 192
 im_size_before_crop: ~ # ~ for not using this
-label_mode: cate_int
 BATCH_SIZE: 128
 
 valid_ratio: 0.1
