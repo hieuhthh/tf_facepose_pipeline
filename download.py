@@ -8,6 +8,6 @@ globals().update(settings)
 des = path_join(route, 'download')
 mkdir(des)
 
-url = "https://drive.google.com/file/d/13lEWQBOdFZk7ZDxwYW6HSHgRIUu3w_68/view?usp=sharing"
-output = f"{des}/more_dataset.zip"
+url = "https://drive.google.com/file/d/1m5DYZzoL9moPFzTZDr501tMr_n4U48HU/view?usp=share_link"
+output = f"{des}/facepose_dataset.zip"
 gdown.download(url=url, output=output, quiet=False, fuzzy=True)

@@ -1,17 +1,17 @@
 route: ./
 seed: 42
-CUDA_VISIBLE_DEVICES: 0,1
+CUDA_VISIBLE_DEVICES: 0,1,2,3
 
 im_size: 192
 im_size_before_crop: ~ # ~ for not using this
-BATCH_SIZE: 128
+BATCH_SIZE: 512
 
-valid_ratio: 0.1
+valid_ratio: 0.01
 test_ratio: ~
 
 train_with_labels: True
 train_repeat: True
-train_shuffle: 8192
+train_shuffle: 2048
 train_augment: True
 
 valid_with_labels: True
@@ -19,28 +19,17 @@ valid_repeat: False
 valid_shuffle: False
 valid_augment: False
 
-base_name: 'EfficientNetV2S'
+base_name: 'EfficientNetV1B3'
 final_dropout: 0.3
-have_emb_layer: True
-emb_dim: 512
-use_normdense: True
+n_landmark: 68
 
 pretrained: ~
-
-arcface_label_smoothing: 0
-arcface_margin1: 1.0
-arcface_margin2: 0.5
-arcface_margin3: 0
-arc_face_weight: 1.0
-
-sup_con_temperature: 0.3
-sup_con_weight: 1.0
 
 monitor: val_loss
 mode: min
 
 max_lr: 1.0e-3
 min_lr: 1.0e-5
-cycle_epoch: 10
-n_cycle: 1
+cycle_epoch: 20
+n_cycle: 5
 save_weights_only: False

@@ -154,8 +154,8 @@ if __name__ == '__main__':
     settings = get_settings()
     globals().update(settings)
 
-    # route_dataset = path_join(route, 'dataset')
-    route_dataset = '/home/lap14880/hieunmt/facepose/facepose_gendata/dataset'
+    route_dataset = path_join(route, 'unzip', 'dataset')
+    # route_dataset = '/home/lap14880/hieunmt/facepose/facepose_gendata/dataset'
 
     img_size = (im_size, im_size)
     input_shape = (im_size, im_size, 3)

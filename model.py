@@ -8,25 +8,25 @@ def get_base_model(name, input_shape):
         return efficientnet.EfficientNetV2S(num_classes=0, input_shape=input_shape, pretrained="imagenet21k")
 
     if name == 'EfficientNetV1B1':
-        return efficientnet.EfficientNetV1B1(num_classes=0, input_shape=input_shape, pretrained="imagenet")
+        return efficientnet.EfficientNetV1B1(num_classes=0, input_shape=input_shape, pretrained="noisy_student")
 
     if name == 'EfficientNetV1B2':
-        return efficientnet.EfficientNetV1B2(num_classes=0, input_shape=input_shape, pretrained="imagenet")
+        return efficientnet.EfficientNetV1B2(num_classes=0, input_shape=input_shape, pretrained="noisy_student")
 
     if name == 'EfficientNetV1B3':
-        return efficientnet.EfficientNetV1B3(num_classes=0, input_shape=input_shape, pretrained="imagenet")
+        return efficientnet.EfficientNetV1B3(num_classes=0, input_shape=input_shape, pretrained="noisy_student")
 
     if name == 'EfficientNetV1B4':
-        return efficientnet.EfficientNetV1B4(num_classes=0, input_shape=input_shape, pretrained="imagenet")
+        return efficientnet.EfficientNetV1B4(num_classes=0, input_shape=input_shape, pretrained="noisy_student")
 
     if name == 'EfficientNetV1B5':
-        return efficientnet.EfficientNetV1B5(num_classes=0, input_shape=input_shape, pretrained="imagenet")
+        return efficientnet.EfficientNetV1B5(num_classes=0, input_shape=input_shape, pretrained="noisy_student")
 
     if name == 'EfficientNetV1B6':
-        return efficientnet.EfficientNetV1B6(num_classes=0, input_shape=input_shape, pretrained="imagenet")
+        return efficientnet.EfficientNetV1B6(num_classes=0, input_shape=input_shape, pretrained="noisy_student")
 
     if name == 'EfficientNetV1B7':
-        return efficientnet.EfficientNetV1B7(num_classes=0, input_shape=input_shape, pretrained="imagenet")
+        return efficientnet.EfficientNetV1B7(num_classes=0, input_shape=input_shape, pretrained="noisy_student")
 
     if name == 'ConvNeXtTiny':
         return convnext.ConvNeXtTiny(num_classes=0, input_shape=input_shape, pretrained="imagenet21k-ft1k")
@@ -36,34 +36,24 @@ def get_base_model(name, input_shape):
 
     raise Exception("Cannot find this base model:", name)
 
-def create_emb_model(base, final_dropout=0.1, have_emb_layer=True, emb_dim=128, name="embedding"):
-    feature = base.output
-
-    x = GlobalAveragePooling2D()(feature)
-    x = Dropout(final_dropout)(x)
-
-    if have_emb_layer:
-        x = Dense(emb_dim, use_bias=False, name='bottleneck')(x)
-        x = BatchNormalization(name='bottleneck_bn')(x)
-    
-    model = Model(base.input, x, name=name)
-
-    return model
-
-def create_model(input_shape, emb_model, n_labels, use_normdense=True, use_cate_int=False):
+def create_model(input_shape, base, n_landmark, final_dropout):
     inp = Input(shape=input_shape, name="input_1")
     
-    x = emb_model(inp)
+    x = base(inp)
     
-    if use_normdense:
-        cate_output = NormDense(n_labels, name='cate_output')(x)
-    else:
-        cate_output = Dense(n_labels, name='cate_output')(x)
+    x = GlobalAveragePooling2D()(x)
 
-    if not use_cate_int:
-        model = Model([inp], [cate_output])
-    else:
-        model = Model([inp], [cate_output, x])
+    x = Dropout(final_dropout)(x)
+
+    x = Dense(512, activation="swish")(x)
+    
+    x = Dropout(final_dropout)(x)
+
+    x = Dense(n_landmark * 2, activation="sigmoid")(x)
+
+    x = Reshape((n_landmark, 2))(x)
+
+    model = Model([inp], [x])
     
     return model
 
@@ -72,23 +62,14 @@ if __name__ == "__main__":
     from utils import *
     from multiprocess_dataset import *
 
-    os.environ["CUDA_VISIBLE_DEVICES"]="0"
+    os.environ["CUDA_VISIBLE_DEVICES"]=""
 
     settings = get_settings()
     globals().update(settings)
 
-    route_dataset = path_join(route, 'dataset')
-
     img_size = (im_size, im_size)
     input_shape = (im_size, im_size, 3)
 
-    use_cate_int = False
-    if label_mode == 'cate_int':
-        use_cate_int = True
-
-    n_labels = 100
-
     base = get_base_model(base_name, input_shape)
-    emb_model = create_emb_model(base, final_dropout, have_emb_layer, emb_dim)
-    model = create_model(input_shape, emb_model, n_labels, use_normdense, use_cate_int)
+    model = create_model(input_shape, base, n_landmark, final_dropout)
     model.summary()
