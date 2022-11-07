@@ -103,6 +103,21 @@ class InferFacePose:
         
         return(point_2d[2], k)
 
+    def euclide_dis(self, a, b):
+        return ((a[0] - b[0])**2 + (a[1] - b[1])**2)**0.5 
+
+    def get_dis_verti(self, ver_marks):
+        res = []
+        for i in range(len(ver_marks) - 1):
+            res.append(self.euclide_dis(ver_marks[i], ver_marks[i + 1]))
+
+        w = np.array([-4.67005909, 2.18661222, 0.95821962, -1.34884679, 0.28772259, 0.25002672, 0.66522547])
+        res = np.array(res)
+        res = np.sum(np.multiply(res, w))
+        res += 2.423137949214162
+
+        return res
+
     def predict_angle(self, img, get_view_point=False):
         """
         return ang_vertical, ang_horizon
@@ -112,6 +127,7 @@ class InferFacePose:
         """
         marks = self.predict_marks(img)
         
+        ver_marks = marks[[28,29,30,31,34,52,58,9]]
         marks = marks[[30,      # Nose tip
                         8,      # Chin
                         36,     # Left eye left corner
@@ -121,8 +137,9 @@ class InferFacePose:
                     ]
       
         eye_center = ((marks[2][0] + marks[3][0]) / 2, (marks[2][1] + marks[3][1]) / 2)
-        dx = abs(marks[2][0] - marks[3][0])
-        dy = abs(marks[2][1] - marks[3][1])
+
+        dx = marks[2][1] - marks[3][1]
+        dy = marks[2][0] - marks[3][0]
         ang_rot = np.arctan2(dy, dx)
         ang_rot = ang_rot * 180 / math.pi  
 
@@ -140,23 +157,25 @@ class InferFacePose:
         
         x1, x2 = self.get_3d_box(img, rotation_vector, translation_vector, self.camera_matrix)
 
-        p1 = (int(marks[0][0]), int(marks[0][1]))
-        p2 = (int(nose_end_point2D[0][0][0]), int(nose_end_point2D[0][0][1]))
+        p1 = (marks[0][0], marks[0][1])
+        p2 = (nose_end_point2D[0][0][0], nose_end_point2D[0][0][1])
 
-        try:
-            m = (p2[1] - p1[1])/(p2[0] - p1[0])
-            ang_vertical = int(math.degrees(math.atan(m)))
-        except:
-            ang_vertical = 90
+        # try:
+        #     m = (p2[1] - p1[1]) / (p2[0] - p1[0])
+        #     ang_vertical = math.degrees(math.atan(m))
+        # except:
+        #     ang_vertical = 90
             
         try:
-            m = (x2[1] - x1[1])/(x2[0] - x1[0])
-            ang_horizon = int(math.degrees(math.atan(-1/m)))
+            m = (x2[1] - x1[1]) / (x2[0] - x1[0])
+            ang_horizon = math.degrees(math.atan(-1/m))
         except:
             ang_horizon = 90
 
-        ang_vertical /= -4
-        ang_horizon /= 4
+        ang_vertical = self.get_dis_verti(ver_marks)
+
+        ang_horizon = ang_horizon * -0.346704 + -3.1765258653045967
+        ang_rot = ang_rot * 0.90852464 + 81.45654748897404
 
         if get_view_point:
             return ang_vertical, ang_horizon, ang_rot, p1, p2
@@ -203,7 +222,7 @@ if __name__ == '__main__':
     except:
         pass
 
-    img = np.array(img) * 255
+    img = np.array(img[...,::-1]) * 255
     img_write = infer_face_pose.draw_marks(img, marks)
     # cv2.line(img_write, p1, p2, (255,255,255), 2)
     
