@@ -31,5 +31,5 @@ mode: min
 max_lr: 1.0e-3
 min_lr: 1.0e-5
 cycle_epoch: 20
-n_cycle: 5
+n_cycle: 10
 save_weights_only: False
